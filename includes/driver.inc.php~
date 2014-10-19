@@ -1,0 +1,309 @@
+<?php # This file should be named as "driver.inc.php" and be located at "/includes/" #
+/**
+ * Project configuration file
+ *
+ * This is a configuration file and does the following things:
+ * - Has site settings in one location.
+ * - Stores URLs and URIs as costants.
+ * - Sets how errors will be handled.
+ * - Provides generic functions for whole project including DB functions.
+ */
+
+# ************************ #
+# ******* SETTINGS ******* #
+
+// Errors are emailed here:
+$contact_email = 'devilaz@ukr.net';
+date_default_timezone_set("UTC");
+
+// Determine whether we're working on a local server or on the real server:
+$host = substr($_SERVER['HTTP_HOST'], 0, 5);
+if (in_array($host, array('local', '127.0', '192.1'))) {
+	$local = TRUE;
+} else {
+	$local = FALSE;
+}
+
+// Determine location of files and the URL of the site:
+// Allow for development on different servers.
+if ($local) {
+
+	// Always debug when running locally:
+	$debug = TRUE;
+
+	// Define the URI and URL costants:
+	define('BASE_URI', '/var/www/html/sky-net/');
+	define('BASE_URL', 'http://localhost/sky-net/');
+
+	// DB settings
+	define('DB_HOST', 'localhost');
+	define('DB_USER', 'php_user');
+	define('DB_PASS', '404@xyz');
+	define('DB_NAME', 'sky-net');
+
+} else {
+
+	// Define the URI and URL costants:
+	define('BASE_URI', '/home/u342284941/public_html/');
+	define('BASE_URL', 'http://sky-net.hol.es/');
+
+	// DB settings
+	define('DB_HOST', 'mysql.hostinger.com.ua');
+	define('DB_USER', 'u342284941_rtusr');
+	define('DB_PASS', '404@xyz');
+	define('DB_NAME', 'u342284941_skynt');
+}
+
+// Common settings
+define('APP_NAME', 'SKY-NET');
+define('APP_LANG', 'en-US');
+define('THUMBS_DIR', 'thumbs/');
+define('AVATARS_DIR', 'avatars/');
+define('MAX_THUMB_SIZE', 65);
+define('DEF_AVATAR', 'style/def_big.jpg'); // the path for the big default avatar
+define('DEF_THUMB', 'style/def_small.jpg'); // the path for the small default avatar (Thumb)
+
+/*
+ * Most important setting!
+ * The $debug variable is used to set error management.
+ * To debug a specific page, add this to the index.php page:
+
+if ($p == 'thismodule') $debug = TRUE;
+
+ * To debug entire site, do
+
+$debug = TRUE;
+
+ * before this next conditional.
+ */
+
+// Assume debuggin is off.
+if (!isset($debug)) {
+	$debug = FALSE;
+}
+
+# ********* SETTINGS ********* #
+# **************************** #
+
+# **************************** #
+# ***** ERROR MANAGEMENT ***** #
+
+/**
+ * Custom error handling function
+ */
+function my_error_handler($e_number, $e_message, $e_file, $e_line, $e_vars) {
+
+	global $debug, $contact_email;
+
+	// Build the error message:
+	$message = "An error occurred in script '$e_file' on line $e_line: $e_message";
+
+	// Append $e_vars to the $message:
+	$message .= print_r($e_vars, 1);
+
+	if ($debug) { // Show the error.
+
+		echo '<div class="error">' . $message . '</div>';
+		debug_print_backtrace();
+
+	} else {
+
+		// Log the error:
+		error_log ($message, 1, $contact_email); // Send email.
+
+		// Only print an error message if the error isn't a notice or strict.
+		if (($e_number != E_NOTICE) && ($e_number < 2048)) {
+			echo '<div class="error">A system error occurred. We apologize for the inconvenience.</div>';
+		}
+	} // End of $debug IF.
+
+} // End of my_error_handler() definition.
+
+// Use my_error_handler function for handling errors:
+set_error_handler('my_error_handler');
+
+# ***** ERROR MANAGEMENT ***** #
+# **************************** #
+
+# **************************** #
+# ***** GENERIC FUNCTIONS **** #
+
+/**
+ * The Driver class has generic function for whole site
+ *
+ * All functions which requires a database connection should be used with an object like this:
+ * $driver = new Driver();
+ * $driver->function_name();
+ * Creating a new objects also makes a DB connection
+ * All functions which does not need a DB connection are static and should be used like this:
+ * Driver::function_name();
+ */
+class Driver {
+
+	private $_mysqli; // DB connection link
+
+	/**
+	 * Making a DB connection when new object of Driver class is created
+	 */
+	public function __construct() {
+		$this->_mysqli = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME);
+		if ($this->_mysqli->connect_errno) {
+			die('Failed to connect to MySQL: [' . $this->_mysqli->connect_errno . '] ' .
+				$this->_mysqli->connect_error);
+		}
+	}
+
+	/**
+	 * Close DB Connection when you don't need it anymore
+	 */
+	function __destruct() {
+		if (isset($this->_mysqli) && !empty($this->_mysqli)) {
+			$this->_mysqli->close();
+		}
+	}
+
+	/**
+	 * Executes MySQL Query
+	 * @param string $query
+	 * @returns array
+	 */
+	public function query($query) {
+		$res = $this->_mysqli->query($query);
+		if (!$res) die('Error #' . $this->_mysqli->errno . ': ' . $this->_mysqli->error);
+		return $res;
+	}
+
+	/**
+	 * Makes user's input string safe
+	 * @param string $str
+	 * @returns string
+	 */
+	public function sanitize($str) {
+
+		// Escaping HTML integrations
+		$str = htmlentities(strip_tags(trim($str)));
+
+		// Escaping MySQL integrations
+		$str = $this->_mysqli->real_escape_string(stripslashes($str));
+
+		// Returning safe string back
+		return $str;
+	}
+
+	# ******** Static Methods ********* #
+
+	/**
+	 * View someone's thumbnail, If title is NULL uses username as a title.
+	 * @param string $user
+	 * @param string $title Default is NULL
+	 * @returns void
+	 */
+	static function showThumbnail($user, $title = NULL) {
+
+		// Getting apropriate address for a link
+		$addr = BASE_URL;
+		$addr .= ($user === $_SESSION['user']) ? 'home' : "$user/home";
+
+		// Getting size and path of the THUMB
+		if (file_exists(BASE_URI . THUMBS_DIR . strtolower("$user.jpg"))) {
+			$img_path = BASE_URL . THUMBS_DIR . strtolower("$user.jpg");
+		} else { // In the case when user has no thumb display default
+			$img_path = BASE_URL . DEF_THUMB;
+		}
+		list($w, $h) = getimagesize($img_path);
+
+		// Set default title if it's empty
+		$title = empty($title) ? $user : $title;
+
+		// Outputting the HTML
+		echo <<<EOT
+<a href="$addr" title="$title">
+	<img src="$img_path" alt="$title" title="$title" style="height:{$h}px; width:{$w}px;" />
+</a>
+EOT;
+	}
+
+	/**
+	 * Refreshes page after POST request. Uses current url if had been used with no arguments.
+	 * @param string $url Default is NULL
+	 * @returns void
+	 */
+	static function refresh($url = NULL) {
+
+		// Preparing real current url
+		$location = 'Location: ';
+		$real_url = 'http://' . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'];
+
+		// Use current url if function had been used with no arguments
+		$location .= ($url) ? $url : $real_url;
+
+		// Redirect
+		header($location);
+		exit();
+	}
+
+	/**
+	 * Smart Die Analog Function. Uses "must be logged in" message if used with no arguments.
+	 * @param string $msg Default is "You must be logged in to view this page"
+	 * @returns void
+	 */
+	static function end($msg = 'You must be logged in to view this page') {
+
+		// Display a message
+		if ($msg) echo "<div class=\"info\">&#8658; $msg</div>";
+
+		// HTML Footer.
+		require_once(BASE_URI . 'includes/footer.inc.html');
+
+		// Diying
+		exit();
+	}
+
+	/**
+	 * Logs the user out
+	 * @returns void
+	 */
+	static function destroySession() {
+
+		// Clean user cookies
+		setcookie('user', '', time() - 2592000, '/');
+
+		// Clean the session
+		$_SESSION = array();
+		if (session_id() || isset($_COOKIE[session_name()]))
+			setcookie(session_name(), '', time() - 2592000, '/');
+		session_destroy();
+	}
+
+	/** Score to level
+	 *
+	 * Calculates user's level depending on the score which is sent as an argument
+	 * @param number $score
+	 * @returns number
+	 */
+	static function getUserLevel($score) {
+		$level_scores = [ 100, 215, 347, 499, 674, 875, 1106, 1372, 1678, 2030 ];
+		for ($i = 0; ; $i++) {
+			// If score out of array $level_scores then return max level
+			if (!isset($level_scores[$i])) return ++$i; // ++ cause min ID = 0, min level = 1
+			// When we found the smallest element in array $level_scores which value is more then
+			// user's score we've got user's next level but we use it as current and even increment
+			// by 1 because of the array $level_scores which [ID=0] element equals to level 2.
+			if ($score < $level_scores[$i]) return ++$i;
+		}
+		return 1; // Return user's level equal to 1 if an error occurs
+	}
+
+	/**
+	 * Time to User's time
+	 *
+	 * This function simply converts the timestamp to the user's time timestamp by adding
+	 * the time offset which is based on user's timezone
+	 * @param number $server_time
+	 * @returns number
+	 */
+	static function timeToUserTime($server_time) {
+		$offset = isset($_SESSION['time_offset']) ? ($_SESSION['time_offset'] * 60) : 0;
+		return $server_time + $offset;
+	}
+}

@@ -1,0 +1,141 @@
+<?php # File name: header.inc.html; Location: /includes/;
+
+/*
+ * This page:
+ * - Begins the HTML header for the site with a generic menu;
+ * - Starts a session;
+ * - Includes a jQuery plugin;
+ * - Checks whether user logged in
+ * - Output vars after header:
+ * 		$title (Page title);
+ *		$loggedin (Whether logged in [TRUE/FALSE]);
+ */
+
+// For getting user's login
+session_start();
+
+$site_root = BASE_URL; // temp VAR for heredoc constructions
+
+$language = APP_LANG; // Applying default language first
+
+// HTML Header
+echo <<<_END
+<!DOCTYPE html>
+<html lang="$language"><head>
+<link rel="apple-touch-icon" href="{$site_root}favicon.ico" />
+<link rel="icon" href="{$site_root}favicon.ico" />
+<!--[if IE]><link rel="shortcut icon" href="{$site_root}favicon.ico" /><![endif]-->
+<script src="{$site_root}includes/OSC.js"></script>
+<script src="http://code.jquery.com/jquery-latest.js"></script>
+<script>
+var d = new Date();
+d.setTime(d.getTime() + (15*60*1000));
+var expires = "expires="+d.toGMTString();
+var offset = new Date().getTimezoneOffset() * -1;
+document.cookie = "timeoffset=" + offset + "; " + expires;
+</script>
+_END;
+
+// Setting page title
+$title = APP_NAME;
+
+// Check for cookies when user not logged in with session. Refresh session.
+if (!isset($_SESSION['user']) && isset($_COOKIE['sky-net_user']) && !empty($_COOKIE['sky-net_user'])) {
+	$_SESSION['user'] = $_COOKIE['sky-net_user'];
+}
+
+// When user logged in
+if (isset($_SESSION[ 'user' ])
+	&& !empty($_SESSION[ 'user' ])
+	&& is_string($_SESSION['user'])
+) {
+	$_SESSION[ 'user' ] = $title = $driver->sanitize($_SESSION[ 'user' ]);
+	$loggedin = TRUE;
+	setcookie('sky-net_user', $_SESSION[ 'user' ], time() + 3600 * 24 * 7, '/' );
+
+	// Update last visit time
+	$q = sprintf( 'UPDATE profiles SET last_visit=NOW() WHERE user="%s"', $_SESSION[ 'user' ] );
+	$driver->query($q);
+
+	# ************************************************************************************** #
+	# **************** Fill UP ALL user data to SESSION for using later ON ***************** #
+	$q = sprintf('SELECT text, firstname, lastname, score, time_offset FROM profiles WHERE user="%s"',
+		$_SESSION[ 'user' ]
+	);
+	$r = $driver->query($q);
+	if ($r->num_rows) {
+
+		// Extracting data to VARs
+		list( $_SESSION[ 'about' ], $_SESSION[ 'firstname' ], $_SESSION[ 'lastname' ],
+			$_SESSION[ 'score' ], $_SESSION[ 'time_offset' ]
+		) = $r->fetch_array();
+
+		// Calculating user's level
+		$_SESSION[ 'level' ] = Driver::getUserLevel( $_SESSION[ 'score' ] );
+
+		// Checking wheather we have correct user's time offset in a DB
+		if ( isset( $_COOKIE[ 'timeoffset' ] ) &&
+			$_COOKIE[ 'timeoffset' ] != $_SESSION[ 'time_offset' ]) {
+
+			// Update the user's time offset
+			$_SESSION[ 'time_offset' ] = round($_COOKIE[ 'timeoffset' ]);
+			$q = sprintf('UPDATE profiles SET time_offset="%d" WHERE user = "%s"',
+				$_SESSION[ 'time_offset' ], $_SESSION[ 'user' ]
+			);
+			$driver->query($q);
+		}
+
+		// Preparing a title for a page
+		$title .= ' | ' . $_SESSION[ 'firstname' ] . ' ' . $_SESSION[ 'lastname' ];
+
+	} else { // When we can't read the user's data from a DB
+		Driver::end('Error reading your data');
+	}
+	# ************************************************************************************** #
+
+} else {
+	$loggedin = false;
+	$_SESSION['user'] = null;
+}
+
+// Additional HTML
+echo <<<_END
+<title>$title</title>
+<meta charset="utf-8" />
+<meta name="author" content="Super o.Oleg" />
+<link rel="stylesheet" href="{$site_root}style/styles.css" type="text/css" />
+</head><body><div id="main"><div id="fixed"><nav><ul class="menu">
+_END;
+
+// Menu HTML for authorized and unauthorized users respectively
+if ($loggedin) {
+	echo <<<_END
+<li id="title" title="$title">{$_SESSION['user']}</li>
+<li><a href="{$site_root}home">Home</a></li>
+<li><a href="{$site_root}joins">Joins</a></li>
+<li><a href="{$site_root}members">Members</a></li>
+<li><a href="{$site_root}profile">Profile</a></li>
+<li><a href="{$site_root}logout">Leave</a></li>
+<li id="score" title="Total score: {$_SESSION['score']}">Level: {$_SESSION['level']}</li>
+_END;
+} else {
+	echo <<<_END
+<li><a href="{$site_root}main">Home</a></li>
+<li><a href="{$site_root}signup">Sign up</a></li>
+<li><a href="{$site_root}login">Log in</a></li>
+_END;
+}
+
+unset($site_root); // Unset temp VAR
+
+// Finilizing header's HTML
+echo '</ul></nav></div><section><div style="height:20px;width:100%;"></div>';
+
+// If login required for certain page check it
+if ($log_req) {
+	if (!$loggedin) {
+		Driver::end();
+	} else {
+		$user = $_SESSION['user'];
+	}
+}

@@ -1,0 +1,9 @@
+# Disable directory browsing:
+Options All -Indexes
+# Prevent folder listing:
+IndexIgnore *
+# Prevent access to any file:
+<FilesMatch "^.*(.inc|.php|.html).*$">
+Order Allow,Deny
+Deny from all
+</FilesMatch>

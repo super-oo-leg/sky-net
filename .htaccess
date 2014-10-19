@@ -1,0 +1,18 @@
+# .htaccess
+<IfModule mod_rewrite.c>
+
+# Turn on the engine:
+RewriteEngine on
+
+# Set the base to this directory
+#RewriteBase /sky-net/
+
+# Redirect pages with GET method:
+RewriteRule ^(.+)/(home|joins|members)/?$ index.php?p=$2&view=$1 [NC,L]
+
+# Redirect certain paths to index.php:
+RewriteRule ^(main|login|signup|home|joins|members|profile)/?$ index.php?p=$1
+
+# Redirect logout page to valid file name:
+RewriteRule ^logout/?$ logout.php
+</IfModule>
